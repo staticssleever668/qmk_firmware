@@ -33,6 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "sendchar.h"
 #include "eeconfig.h"
 #include "action_layer.h"
+#include "action_util.h"
 #ifdef AUDIO_ENABLE
 #    include "audio.h"
 #endif
@@ -552,6 +553,9 @@ static bool matrix_task(void) {
 
         matrix_previous[row] = current_row;
     }
+
+    send_keyboard_report();
+    send_keyboard_report_buffered_unregister_keys();
 
     return matrix_changed;
 }
