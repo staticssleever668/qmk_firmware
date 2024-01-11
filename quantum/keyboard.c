@@ -16,7 +16,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <stdint.h>
-#include "action_util.h"
 #include "keyboard.h"
 #include "keycode_config.h"
 #include "matrix.h"
@@ -553,8 +552,6 @@ static bool matrix_task(void) {
 
         matrix_previous[row] = current_row;
     }
-
-    send_keyboard_report();
 
     return matrix_changed;
 }
