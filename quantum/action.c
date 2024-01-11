@@ -32,12 +32,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "debug.h"
 #include "quantum.h"
 
-/* private functions */
-static void register_code_P(uint8_t code, void send_report_f(void));
-static void unregister_code_P(uint8_t code, void send_report_f(void));
-
-extern volatile unregister_keycodes_t unregister_keycodes;
-
 #ifdef BACKLIGHT_ENABLE
 #    include "backlight.h"
 #endif
@@ -407,18 +401,18 @@ void process_action(keyrecord_t *record, action_t action) {
                     } else {
                         add_weak_mods(mods);
                     }
-                    defer_keyboard_report();
+                    send_keyboard_report();
                 }
-                register_code_deferred(action.key.code);
+                register_code(action.key.code);
             } else {
-                unregister_code_deferred(action.key.code);
+                unregister_code(action.key.code);
                 if (mods) {
                     if (IS_MODIFIER_KEYCODE(action.key.code) || action.key.code == KC_NO) {
                         del_mods(mods);
                     } else {
                         del_weak_mods(mods);
                     }
-                    defer_keyboard_report();
+                    send_keyboard_report();
                 }
             }
         } break;
@@ -441,7 +435,7 @@ void process_action(keyrecord_t *record, action_t action) {
                                 } else {
                                     add_weak_mods(mods);
                                 }
-                                defer_keyboard_report();
+                                send_keyboard_report();
                             }
                             register_code(action.key.code);
                         } else {
@@ -452,7 +446,7 @@ void process_action(keyrecord_t *record, action_t action) {
                                 } else {
                                     del_weak_mods(mods);
                                 }
-                                defer_keyboard_report();
+                                send_keyboard_report();
                             }
                         }
                     } else {
@@ -526,11 +520,12 @@ void process_action(keyrecord_t *record, action_t action) {
                     } else {
                         if (tap_count > 0) {
                             ac_dprintf("MODS_TAP: Tap: unregister_code\n");
-                            uint16_t delay = TAP_CODE_DELAY;
                             if (action.layer_tap.code == KC_CAPS_LOCK) {
-                                delay = TAP_HOLD_CAPS_DELAY;
+                                wait_ms(TAP_HOLD_CAPS_DELAY);
+                            } else {
+                                wait_ms(TAP_CODE_DELAY);
                             }
-                            unregister_code_buffered(action.key.code, delay);
+                            unregister_code(action.key.code);
                         } else {
                             ac_dprintf("MODS_TAP: No tap: add_mods\n");
 #    if defined(RETRO_TAPPING) && defined(DUMMY_MOD_NEUTRALIZER_KEYCODE)
@@ -699,7 +694,7 @@ void process_action(keyrecord_t *record, action_t action) {
                     if (event.pressed) {
                         if (tap_count > 0) {
                             ac_dprintf("KEYMAP_TAP_KEY: Tap: register_code\n");
-                            register_code_deferred(action.layer_tap.code);
+                            register_code(action.layer_tap.code);
                         } else {
                             ac_dprintf("KEYMAP_TAP_KEY: No tap: On on press\n");
                             layer_on(action.layer_tap.val);
@@ -707,11 +702,12 @@ void process_action(keyrecord_t *record, action_t action) {
                     } else {
                         if (tap_count > 0) {
                             ac_dprintf("KEYMAP_TAP_KEY: Tap: unregister_code\n");
-                            uint16_t delay = TAP_CODE_DELAY;
                             if (action.layer_tap.code == KC_CAPS_LOCK) {
-                                delay = TAP_HOLD_CAPS_DELAY;
+                                wait_ms(TAP_HOLD_CAPS_DELAY);
+                            } else {
+                                wait_ms(TAP_CODE_DELAY);
                             }
-                            unregister_code_buffered(action.key.code, delay);
+                            unregister_code(action.layer_tap.code);
                         } else {
                             ac_dprintf("KEYMAP_TAP_KEY: No tap: Off on release\n");
                             layer_off(action.layer_tap.val);
@@ -881,20 +877,11 @@ void process_action(keyrecord_t *record, action_t action) {
 #endif
 }
 
-void register_code_deferred(uint8_t code) {
-    register_code_P(code, &defer_keyboard_report);
-}
-
-void register_code(uint8_t code) {
-    register_code_P(code, &defer_keyboard_report);
-    // register_code_P(code, &send_keyboard_report);
-}
-
 /** \brief Utilities for actions. (FIXME: Needs better description)
  *
  * FIXME: Needs documentation.
  */
-void register_code_P(uint8_t code, void send_report_f(void)) {
+__attribute__((weak)) void register_code(uint8_t code) {
     if (code == KC_NO) {
         return;
 
@@ -905,30 +892,30 @@ void register_code_P(uint8_t code, void send_report_f(void)) {
         if (host_keyboard_led_state().caps_lock) return;
 #    endif
         add_key(KC_CAPS_LOCK);
-        send_report_f();
+        send_keyboard_report();
         wait_ms(TAP_HOLD_CAPS_DELAY);
         del_key(KC_CAPS_LOCK);
-        send_report_f();
+        send_keyboard_report();
 
     } else if (KC_LOCKING_NUM_LOCK == code) {
 #    ifdef LOCKING_RESYNC_ENABLE
         if (host_keyboard_led_state().num_lock) return;
 #    endif
         add_key(KC_NUM_LOCK);
-        send_report_f();
+        send_keyboard_report();
         wait_ms(100);
         del_key(KC_NUM_LOCK);
-        send_report_f();
+        send_keyboard_report();
 
     } else if (KC_LOCKING_SCROLL_LOCK == code) {
 #    ifdef LOCKING_RESYNC_ENABLE
         if (host_keyboard_led_state().scroll_lock) return;
 #    endif
         add_key(KC_SCROLL_LOCK);
-        send_report_f();
+        send_keyboard_report();
         wait_ms(100);
         del_key(KC_SCROLL_LOCK);
-        send_report_f();
+        send_keyboard_report();
 #endif
 
     } else if (IS_BASIC_KEYCODE(code)) {
@@ -940,13 +927,13 @@ void register_code_P(uint8_t code, void send_report_f(void)) {
         // modifiers will be reported incorrectly, see issue #1708
         if (is_key_pressed(code)) {
             del_key(code);
-            send_report_f();
+            send_keyboard_report();
         }
         add_key(code);
-        send_report_f();
+        send_keyboard_report();
     } else if (IS_MODIFIER_KEYCODE(code)) {
         add_mods(MOD_BIT(code));
-        send_report_f();
+        send_keyboard_report();
 
 #ifdef EXTRAKEY_ENABLE
     } else if (IS_SYSTEM_KEYCODE(code)) {
@@ -960,32 +947,11 @@ void register_code_P(uint8_t code, void send_report_f(void)) {
     }
 }
 
-void unregister_code_deferred(uint8_t code) {
-    unregister_code_P(code, &defer_keyboard_report);
-}
-
-void unregister_code(uint8_t code) {
-    unregister_code_P(code, &defer_keyboard_report);
-    // unregister_code_P(code, &send_keyboard_report);
-}
-
-void unregister_code_buffered(uint8_t code, uint16_t delay) {
-    if (unregister_keycodes.len > UNREGISTER_KEYCODES_BUFFER_SIZE) {
-        dprintln("ERROR: couldn't add unregister keycode, buffer is full!");
-        return;
-    }
-    unregister_keycodes.buffer[unregister_keycodes.len] = code;
-    unregister_keycodes.len += 1;
-    if (unregister_keycodes.tap_delay < delay) {
-        unregister_keycodes.tap_delay = delay;
-    }
-}
-
 /** \brief Utilities for actions. (FIXME: Needs better description)
  *
  * FIXME: Needs documentation.
  */
-void unregister_code_P(uint8_t code, void send_report_f(void)) {
+__attribute__((weak)) void unregister_code(uint8_t code) {
     if (code == KC_NO) {
         return;
 
@@ -996,35 +962,35 @@ void unregister_code_P(uint8_t code, void send_report_f(void)) {
         if (!host_keyboard_led_state().caps_lock) return;
 #    endif
         add_key(KC_CAPS_LOCK);
-        send_report_f();
+        send_keyboard_report();
         del_key(KC_CAPS_LOCK);
-        send_report_f();
+        send_keyboard_report();
 
     } else if (KC_LOCKING_NUM_LOCK == code) {
 #    ifdef LOCKING_RESYNC_ENABLE
         if (!host_keyboard_led_state().num_lock) return;
 #    endif
         add_key(KC_NUM_LOCK);
-        send_report_f();
+        send_keyboard_report();
         del_key(KC_NUM_LOCK);
-        send_report_f();
+        send_keyboard_report();
 
     } else if (KC_LOCKING_SCROLL_LOCK == code) {
 #    ifdef LOCKING_RESYNC_ENABLE
         if (!host_keyboard_led_state().scroll_lock) return;
 #    endif
         add_key(KC_SCROLL_LOCK);
-        send_report_f();
+        send_keyboard_report();
         del_key(KC_SCROLL_LOCK);
-        send_report_f();
+        send_keyboard_report();
 #endif
 
     } else if (IS_BASIC_KEYCODE(code)) {
         del_key(code);
-        send_report_f();
+        send_keyboard_report();
     } else if (IS_MODIFIER_KEYCODE(code)) {
         del_mods(MOD_BIT(code));
-        send_report_f();
+        send_keyboard_report();
 
 #ifdef EXTRAKEY_ENABLE
     } else if (IS_SYSTEM_KEYCODE(code)) {

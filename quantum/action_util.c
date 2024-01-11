@@ -21,8 +21,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "action_layer.h"
 #include "timer.h"
 #include "keycode_config.h"
-#include "wait.h"
 #include <string.h>
+
+extern keymap_config_t keymap_config;
 
 static uint8_t real_mods = 0;
 static uint8_t weak_mods = 0;
@@ -38,8 +39,9 @@ report_keyboard_t *keyboard_report = &(report_keyboard_t){};
 report_nkro_t *nkro_report = &(report_nkro_t){};
 #endif
 
-bool                           s_should_send_report;
-volatile unregister_keycodes_t unregister_keycodes;
+extern inline void add_key(uint8_t key);
+extern inline void del_key(uint8_t key);
+extern inline void clear_keys(void);
 
 #ifndef NO_ACTION_ONESHOT
 static uint8_t oneshot_mods        = 0;
@@ -280,32 +282,6 @@ static uint8_t get_mods_for_report(void) {
     return mods;
 }
 
-void defer_keyboard_report() {
-    s_should_send_report = true;
-}
-
-/**
- * @brief Send all unregister keycodes which have been recorded during keycode processing.
- *
- */
-void send_keyboard_report_buffered_unregister_keys(void) {
-    if (unregister_keycodes.len > 0) {
-        while (unregister_keycodes.len > 0) {
-            unregister_keycodes.len--;
-            unregister_code_deferred(unregister_keycodes.buffer[unregister_keycodes.len]);
-        }
-
-        if (unregister_keycodes.tap_delay != 0) {
-            wait_ms(unregister_keycodes.tap_delay);
-            unregister_keycodes.tap_delay = 0;
-        }
-
-        /* reset unregister_keycodes buffer. */
-        unregister_keycodes.len = 0;
-        send_keyboard_report();
-    }
-}
-
 void send_6kro_report(void) {
     keyboard_report->mods = get_mods_for_report();
 
@@ -338,13 +314,9 @@ void send_nkro_report(void) {
 
 /** \brief Send keyboard report
  *
- * Checks if the keyboard report is different from the last one sent, and if so, sends the updated one
+ * FIXME: needs doc
  */
 void send_keyboard_report(void) {
-    if (!s_should_send_report) {
-        return;
-    }
-    s_should_send_report = false;
 #ifdef NKRO_ENABLE
     if (keyboard_protocol && keymap_config.nkro) {
         send_nkro_report();
