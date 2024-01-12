@@ -312,23 +312,11 @@ void send_nkro_report(void) {
 }
 #endif
 
-static bool s_should_send_report = false;
-
-bool should_send_report(void) {
-    return s_should_send_report;
-}
-
-// Mark for sending
-void send_keyboard_report(void) {
-    s_should_send_report = true;
-}
-
 /** \brief Send keyboard report
  *
  * FIXME: needs doc
  */
-void do_send_keyboard_report(void) {
-    s_should_send_report = false;
+void send_keyboard_report(void) {
 #ifdef NKRO_ENABLE
     if (keyboard_protocol && keymap_config.nkro) {
         send_nkro_report();

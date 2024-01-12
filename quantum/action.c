@@ -71,10 +71,6 @@ __attribute__((weak)) bool get_retro_tapping(uint16_t keycode, keyrecord_t *reco
  * FIXME: Needs documentation.
  */
 void action_exec(keyevent_t event) {
-    if (IS_NOEVENT(event)) {
-        unbuffer_unregister_codes_where_needed();
-    }
-
     if (IS_EVENT(event)) {
         ac_dprintf("\n---- action_exec: start -----\n");
         ac_dprintf("EVENT: ");
@@ -524,7 +520,12 @@ void process_action(keyrecord_t *record, action_t action) {
                     } else {
                         if (tap_count > 0) {
                             ac_dprintf("MODS_TAP: Tap: unregister_code\n");
-                            unregister_code_buffered(action.key.code, action.layer_tap.code == KC_CAPS_LOCK ? TAP_HOLD_CAPS_DELAY : TAP_CODE_DELAY);
+                            if (action.layer_tap.code == KC_CAPS_LOCK) {
+                                wait_ms(TAP_HOLD_CAPS_DELAY);
+                            } else {
+                                wait_ms(TAP_CODE_DELAY);
+                            }
+                            unregister_code(action.key.code);
                         } else {
                             ac_dprintf("MODS_TAP: No tap: unregister_mods\n");
 #    if defined(RETRO_TAPPING) && defined(DUMMY_MOD_NEUTRALIZER_KEYCODE)
@@ -701,7 +702,12 @@ void process_action(keyrecord_t *record, action_t action) {
                     } else {
                         if (tap_count > 0) {
                             ac_dprintf("KEYMAP_TAP_KEY: Tap: unregister_code\n");
-                            unregister_code_buffered(action.layer_tap.code, action.layer_tap.code == KC_CAPS_LOCK ? TAP_HOLD_CAPS_DELAY : TAP_CODE_DELAY);
+                            if (action.layer_tap.code == KC_CAPS_LOCK) {
+                                wait_ms(TAP_HOLD_CAPS_DELAY);
+                            } else {
+                                wait_ms(TAP_CODE_DELAY);
+                            }
+                            unregister_code(action.layer_tap.code);
                         } else {
                             ac_dprintf("KEYMAP_TAP_KEY: No tap: Off on release\n");
                             layer_off(action.layer_tap.val);
@@ -713,7 +719,12 @@ void process_action(keyrecord_t *record, action_t action) {
                         register_code(action.layer_tap.code);
                     } else {
                         ac_dprintf("KEYMAP_TAP_KEY: Tap: unregister_code\n");
-                        unregister_code_buffered(action.layer_tap.code, action.layer_tap.code == KC_CAPS_LOCK ? TAP_HOLD_CAPS_DELAY : TAP_CODE_DELAY);
+                        if (action.layer_tap.code == KC_CAPS) {
+                            wait_ms(TAP_HOLD_CAPS_DELAY);
+                        } else {
+                            wait_ms(TAP_CODE_DELAY);
+                        }
+                        unregister_code(action.layer_tap.code);
                     }
 #    endif
                     break;
@@ -781,7 +792,8 @@ void process_action(keyrecord_t *record, action_t action) {
                         if (event.pressed) {
                             register_code(action.swap.code);
                         } else {
-                            unregister_code_buffered(action.swap.code, TAP_CODE_DELAY);
+                            wait_ms(TAP_CODE_DELAY);
+                            unregister_code(action.swap.code);
                             *record = (keyrecord_t){}; // hack: reset tap mode
                         }
                     } else {
@@ -870,8 +882,6 @@ void process_action(keyrecord_t *record, action_t action) {
  * FIXME: Needs documentation.
  */
 __attribute__((weak)) void register_code(uint8_t code) {
-    unbuffer_unregister_codes_force();
-
     if (code == KC_NO) {
         return;
 
@@ -937,70 +947,11 @@ __attribute__((weak)) void register_code(uint8_t code) {
     }
 }
 
-struct unregister_codes {
-    uint16_t timeouts_at;
-    uint8_t  code;
-};
-
-struct unregister_codes_buffer {
-    struct unregister_codes codes[16];
-} buf = { 0 };
-
-// XXX: try pressing 'fe'....
-void unregister_code_buffered(uint8_t code, uint16_t delay) {
-    dprintf("unregister_code_buffered(%d,%d) called\n", code, delay);
-
-    uint8_t free_slot = UINT8_MAX;
-    for (size_t i = 0; i < ARRAY_SIZE(buf.codes); i++) {
-        if (buf.codes[i].code == 0) {
-            free_slot = i;
-            break;
-        }
-    }
-    if (free_slot == UINT8_MAX) {
-        dprintln("buffer is full :(");
-        return;
-    };
-
-    buf.codes[free_slot].code        = code;
-    buf.codes[free_slot].timeouts_at = timer_read() + delay;
-}
-
-// doens't seem to work for some reanos.
-// I guess we need to buffer *all* key-presses then, with delays stacking on each other.
-void unbuffer_unregister_codes_force(void) {
-    for (size_t i = 0; i < ARRAY_SIZE(buf.codes); i++) {
-        if (buf.codes[i].code == 0) {
-            continue;
-        }
-        if (true) {
-            unregister_code(buf.codes[i].code);
-            buf.codes[i].timeouts_at = 0;
-            buf.codes[i].code = 0;
-        }
-    }
-}
-
-void unbuffer_unregister_codes_where_needed(void) {
-    const uint32_t now = timer_read();
-    for (size_t i = 0; i < ARRAY_SIZE(buf.codes); i++) {
-        if (buf.codes[i].code == 0) {
-            continue;
-        }
-        if (timer_expired(now, buf.codes[i].timeouts_at)) {
-            unregister_code(buf.codes[i].code);
-            buf.codes[i].timeouts_at = 0;
-            buf.codes[i].code = 0;
-        }
-    }
-}
-
 /** \brief Utilities for actions. (FIXME: Needs better description)
  *
  * FIXME: Needs documentation.
  */
 __attribute__((weak)) void unregister_code(uint8_t code) {
-    dprintf("unregister_code(%d) called\n", code);
     if (code == KC_NO) {
         return;
 
@@ -1060,7 +1011,8 @@ __attribute__((weak)) void unregister_code(uint8_t code) {
  */
 __attribute__((weak)) void tap_code_delay(uint8_t code, uint16_t delay) {
     register_code(code);
-    unregister_code_buffered(code, delay);
+    wait_ms(delay);
+    unregister_code(code);
 }
 
 /** \brief Tap a keycode with the default delay.

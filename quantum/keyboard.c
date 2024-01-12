@@ -32,7 +32,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "util.h"
 #include "sendchar.h"
 #include "eeconfig.h"
-#include "action_util.h"
 #include "action_layer.h"
 #ifdef AUDIO_ENABLE
 #    include "audio.h"
@@ -518,10 +517,6 @@ static bool matrix_task(void) {
 
     matrix_scan_perf_task();
 
-    if (should_send_report()) {
-        do_send_keyboard_report();
-    }
-
     // Short-circuit the complete matrix processing if it is not necessary
     if (!matrix_changed) {
         generate_tick_event();
@@ -556,10 +551,6 @@ static bool matrix_task(void) {
         }
 
         matrix_previous[row] = current_row;
-    }
-
-    if (should_send_report()) {
-        do_send_keyboard_report();
     }
 
     return matrix_changed;
