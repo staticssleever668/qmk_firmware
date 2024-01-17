@@ -312,11 +312,15 @@ void send_nkro_report(void) {
 }
 #endif
 
+static bool s_should_send_report;
+
 /** \brief Send keyboard report
  *
  * FIXME: needs doc
  */
 void send_keyboard_report(void) {
+    s_should_send_report = false;
+
 #ifdef NKRO_ENABLE
     if (keyboard_protocol && keymap_config.nkro) {
         send_nkro_report();
@@ -326,6 +330,17 @@ void send_keyboard_report(void) {
 #else
     send_6kro_report();
 #endif
+}
+
+void buffer_send_keyboard_report(void) {
+    s_should_send_report = true;
+}
+
+void flush_send_keyboard_report(void) {
+    if (!s_should_send_report) {
+        return;
+    }
+    send_keyboard_report();
 }
 
 /** \brief Get mods
