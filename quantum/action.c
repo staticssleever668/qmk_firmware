@@ -514,7 +514,7 @@ void process_action(keyrecord_t *record, action_t action) {
                                 register_code(action.key.code);
                             }
                         } else {
-                            ac_dprintf("MODS_TAP: No tap: add_mods\n");
+                            ac_dprintf("MODS_TAP: No tap: register_mods\n");
                             register_mods(mods);
                         }
                     } else {
@@ -527,7 +527,7 @@ void process_action(keyrecord_t *record, action_t action) {
                             }
                             unregister_code(action.key.code);
                         } else {
-                            ac_dprintf("MODS_TAP: No tap: add_mods\n");
+                            ac_dprintf("MODS_TAP: No tap: unregister_mods\n");
 #    if defined(RETRO_TAPPING) && defined(DUMMY_MOD_NEUTRALIZER_KEYCODE)
                             // Send a dummy keycode to neutralize flashing modifiers
                             // if the key was held and then released with no interruptions.
