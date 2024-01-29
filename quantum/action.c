@@ -72,7 +72,7 @@ __attribute__((weak)) bool get_retro_tapping(uint16_t keycode, keyrecord_t *reco
  */
 void action_exec(keyevent_t event) {
     if (IS_NOEVENT(event)) {
-        unbuffer_unregister_codes_where_needed();
+        key_action_ring_buffer_flush();
     }
 
     if (IS_EVENT(event)) {
@@ -524,7 +524,7 @@ void process_action(keyrecord_t *record, action_t action) {
                     } else {
                         if (tap_count > 0) {
                             ac_dprintf("MODS_TAP: Tap: unregister_code\n");
-                            unregister_code_buffered(action.key.code, action.layer_tap.code == KC_CAPS_LOCK ? TAP_HOLD_CAPS_DELAY : TAP_CODE_DELAY);
+                            unregister_code_delay(action.key.code, action.layer_tap.code == KC_CAPS_LOCK ? TAP_HOLD_CAPS_DELAY : TAP_CODE_DELAY);
                         } else {
                             ac_dprintf("MODS_TAP: No tap: unregister_mods\n");
 #    if defined(RETRO_TAPPING) && defined(DUMMY_MOD_NEUTRALIZER_KEYCODE)
@@ -701,7 +701,7 @@ void process_action(keyrecord_t *record, action_t action) {
                     } else {
                         if (tap_count > 0) {
                             ac_dprintf("KEYMAP_TAP_KEY: Tap: unregister_code\n");
-                            unregister_code_buffered(action.layer_tap.code, action.layer_tap.code == KC_CAPS_LOCK ? TAP_HOLD_CAPS_DELAY : TAP_CODE_DELAY);
+                            unregister_code_delay(action.layer_tap.code, action.layer_tap.code == KC_CAPS_LOCK ? TAP_HOLD_CAPS_DELAY : TAP_CODE_DELAY);
                         } else {
                             ac_dprintf("KEYMAP_TAP_KEY: No tap: Off on release\n");
                             layer_off(action.layer_tap.val);
@@ -869,9 +869,7 @@ void process_action(keyrecord_t *record, action_t action) {
  *
  * FIXME: Needs documentation.
  */
-__attribute__((weak)) void register_code(uint8_t code) {
-    unbuffer_unregister_codes_force();
-
+static void do_register_code(uint8_t code) {
     if (code == KC_NO) {
         return;
 
@@ -937,70 +935,71 @@ __attribute__((weak)) void register_code(uint8_t code) {
     }
 }
 
-struct unregister_codes {
-    uint16_t timeouts_at;
-    uint8_t  code;
+enum buffered_key_action_type {
+    BUFFERED_KEY_ACTION_TYPE_INVALID = 0,
+    BUFFERED_KEY_ACTION_TYPE_PRESS,
+    BUFFERED_KEY_ACTION_TYPE_RELEASE,
 };
 
-struct unregister_codes_buffer {
-    struct unregister_codes codes[16];
-} buf = { 0 };
+struct buffered_key_action {
+    enum buffered_key_action_type type;
+    union buffered_key_action_action {
+        struct {
+            uint8_t code;
+        } press;
+        struct {
+            uint16_t timeouts_at;
+            uint8_t  code;
+        } release;
+    } action;
+};
 
-// XXX: try pressing 'fe'....
-void unregister_code_buffered(uint8_t code, uint16_t delay) {
-    dprintf("unregister_code_buffered(%d,%d) called\n", code, delay);
+struct key_action_ring_buffer {
+    struct buffered_key_action actions[32];
+    size_t                     read_idx;
+    size_t                     write_idx;
+};
 
-    uint8_t free_slot = UINT8_MAX;
-    for (size_t i = 0; i < ARRAY_SIZE(buf.codes); i++) {
-        if (buf.codes[i].code == 0) {
-            free_slot = i;
-            break;
-        }
-    }
-    if (free_slot == UINT8_MAX) {
-        dprintln("buffer is full :(");
+static struct key_action_ring_buffer s_buf = {0};
+
+static void key_action_ring_buffer_put(struct buffered_key_action action) {
+    dprintf("key_action_ring_buffer_put({.type=%d})\n", action.type);
+    const size_t next_index = (s_buf.write_idx + 1) % ARRAY_SIZE(s_buf.actions);
+    if (next_index == s_buf.read_idx) {
+        println("key_action_ring_buffer_put() overflow");
         return;
+    }
+    s_buf.actions[s_buf.write_idx] = action;
+    s_buf.write_idx                = next_index;
+};
+
+void unregister_code_delay(uint8_t code, uint16_t delay) {
+    // XXX: maybe another action type 'delay'
+    struct buffered_key_action action = {
+        .type                       = BUFFERED_KEY_ACTION_TYPE_RELEASE,
+        .action.release.code        = code,
+        .action.release.timeouts_at = timer_read() + delay,
     };
-
-    buf.codes[free_slot].code        = code;
-    buf.codes[free_slot].timeouts_at = timer_read() + delay;
+    key_action_ring_buffer_put(action);
 }
 
-// doens't seem to work for some reanos.
-// I guess we need to buffer *all* key-presses then, with delays stacking on each other.
-void unbuffer_unregister_codes_force(void) {
-    for (size_t i = 0; i < ARRAY_SIZE(buf.codes); i++) {
-        if (buf.codes[i].code == 0) {
-            continue;
-        }
-        if (true) {
-            unregister_code(buf.codes[i].code);
-            buf.codes[i].timeouts_at = 0;
-            buf.codes[i].code = 0;
-        }
-    }
+void register_code(uint8_t code) {
+    struct buffered_key_action action = {
+        .type              = BUFFERED_KEY_ACTION_TYPE_PRESS,
+        .action.press.code = code,
+    };
+    key_action_ring_buffer_put(action);
 }
 
-void unbuffer_unregister_codes_where_needed(void) {
-    const uint32_t now = timer_read();
-    for (size_t i = 0; i < ARRAY_SIZE(buf.codes); i++) {
-        if (buf.codes[i].code == 0) {
-            continue;
-        }
-        if (timer_expired(now, buf.codes[i].timeouts_at)) {
-            unregister_code(buf.codes[i].code);
-            buf.codes[i].timeouts_at = 0;
-            buf.codes[i].code = 0;
-        }
-    }
+void unregister_code(uint8_t code) {
+    unregister_code_delay(code, 0);
 }
 
 /** \brief Utilities for actions. (FIXME: Needs better description)
  *
  * FIXME: Needs documentation.
  */
-__attribute__((weak)) void unregister_code(uint8_t code) {
-    dprintf("unregister_code(%d) called\n", code);
+void do_unregister_code(uint8_t code) {
     if (code == KC_NO) {
         return;
 
@@ -1053,6 +1052,44 @@ __attribute__((weak)) void unregister_code(uint8_t code) {
     }
 }
 
+// XXX: this doesn't work as there is another level of buffering within QMK, which has it's own time information(see action_tapping_process)
+// @retval true Should try flushing again
+static bool key_action_ring_buffer_try_register_current(void) {
+    if (s_buf.read_idx == s_buf.write_idx) {
+        // Empty.
+        return false;
+    }
+
+    const uint16_t now = timer_read();
+    const struct buffered_key_action action = s_buf.actions[s_buf.read_idx];
+    switch (action.type) {
+        case BUFFERED_KEY_ACTION_TYPE_INVALID:
+            dprintln("try_register_current() invalid");
+            return false;
+        case BUFFERED_KEY_ACTION_TYPE_PRESS:
+            dprintf("try_register_current() register_code %d\n", action.action.press.code);
+            do_register_code(action.action.press.code);
+            return true;
+        case BUFFERED_KEY_ACTION_TYPE_RELEASE:
+            if (timer_expired(now, action.action.release.timeouts_at)) {
+                dprintf("try_register_current() expired, so unregister_code %d\n", action.action.release.code);
+                do_unregister_code(action.action.release.code);
+                return true;
+            }
+            dprintf("try_register_current() release retry");
+            return false;
+    }
+
+    return false;
+}
+
+void key_action_ring_buffer_flush(void) {
+    while (key_action_ring_buffer_try_register_current()) {
+        s_buf.actions[s_buf.read_idx].type = BUFFERED_KEY_ACTION_TYPE_INVALID;
+        s_buf.read_idx                     = (s_buf.read_idx + 1) % ARRAY_SIZE(s_buf.actions);
+    }
+}
+
 /** \brief Tap a keycode with a delay.
  *
  * \param code The basic keycode to tap.
@@ -1060,7 +1097,7 @@ __attribute__((weak)) void unregister_code(uint8_t code) {
  */
 __attribute__((weak)) void tap_code_delay(uint8_t code, uint16_t delay) {
     register_code(code);
-    unregister_code_buffered(code, delay);
+    unregister_code_delay(code, delay);
 }
 
 /** \brief Tap a keycode with the default delay.

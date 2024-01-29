@@ -128,9 +128,8 @@ void layer_switch(uint8_t new_layer);
 bool is_tap_record(keyrecord_t *record);
 bool is_tap_action(action_t action);
 
-void unregister_code_buffered(uint8_t code, uint16_t delay);
-void unbuffer_unregister_codes_where_needed(void);
-void unbuffer_unregister_codes_force(void);
+void unregister_code_delay(uint8_t code, uint16_t delay);
+void key_action_ring_buffer_flush(void);
 
 #ifndef NO_ACTION_TAPPING
 void process_record_tap_hint(keyrecord_t *record);
