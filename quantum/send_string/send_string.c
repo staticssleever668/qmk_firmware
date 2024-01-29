@@ -184,12 +184,7 @@ void send_string_with_delay(const char *string, uint8_t interval) {
             send_char(ascii_code);
         }
         ++string;
-        // interval
-        {
-            uint8_t ms = interval;
-            while (ms--)
-                wait_ms(1);
-        }
+        wait_ms(interval);
     }
 }
 
@@ -317,12 +312,7 @@ void send_string_with_delay_P(const char *string, uint8_t interval) {
             send_char(ascii_code);
         }
         ++string;
-        // interval
-        {
-            uint8_t ms = interval;
-            while (ms--)
-                wait_ms(1);
-        }
+        wait_ms(interval);
     }
 }
 #endif
